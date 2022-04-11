@@ -49,7 +49,7 @@ Driven by a personal interest/need, this platform could be used for bedroom guit
 
 MIT License
 
-Copyright (c) 2022 tooyipjee
+Copyright (c) 2022 elektroThing
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
