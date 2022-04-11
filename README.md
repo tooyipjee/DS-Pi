@@ -34,7 +34,6 @@ Driven by a personal interest/need, this platform could be used for bedroom guit
     * 8×Programmable IO (PIO) state machines for custom peripheral support
 * Audio Codec | [TLV320AIC3254](https://www.ti.com/product/TLV320AIC3254)
     * Headphone Amp | [MAX97220BETE+T](http://datasheets.maximintegrated.com/en/ds/MAX97220A-MAX97220E.pdf)
-    * Gyroscope | ±125/±250/±500/±1000/±2000 dps at 12.5 Hz to 6.7 KHz
 * Connectors
     * MicroUSB | Programming/UART
     * Microphone Input | 2x Screw Terminals
