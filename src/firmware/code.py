@@ -65,10 +65,10 @@ print("MCLK real frequency:", state_machine.frequency)
 
 # this address is for an adxl345 accelerometer, i used it to debug the i2c functions
 # comment out this address when testing the aic3254 codec
-dev_address = 0x53
+# dev_address = 0x53
 
 # datasheet says i2c device ID is 0b0011000 (7-bit) so 0b0011000 << 1 = 0b00110000 = 0x30
-# dev_address = 0x30 # 0b00110000
+dev_address = 0x30 # 0b00110000
 
 gain = 0x14 # 10dB gain. see datasheet for this value (p. 141) [0b00010100]
 
