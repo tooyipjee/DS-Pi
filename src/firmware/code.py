@@ -68,7 +68,7 @@ print("MCLK real frequency:", state_machine.frequency)
 # dev_address = 0x53
 
 # datasheet says i2c device ID is 0b0011000 (7-bit) so 0b0011000 << 1 = 0b00110000 = 0x30
-dev_address = 0x30 # 0b00110000
+dev_address = 0x18 # 0b00110000
 
 gain = 0x14 # 10dB gain. see datasheet for this value (p. 141) [0b00010100]
 
@@ -187,16 +187,17 @@ def init_aic3254(device):
 i2s = audiobusio.I2SOut(board.GP3, board.GP4, board.GP5) # BCLK, WCLK, DIN respectively
 
 # generate the data for a sine wave @ 440 Hz
-tone_volume = 0.5
+tone_volume = 1
 freq = 440 # tone @ 440 Hz (A1 / La)
-length = 8000 // freq
+length = 4000 // freq
 sine_wave = array.array("h", [0] * length)
 for i in range(length):
 	sine_wave[i] = int((math.sin(math.pi * 2 * i / length)) * tone_volume * (2 ** 15 - 1))
 sine_wave_sample = audiocore.RawSample(sine_wave)
 
 # setup the i2c bus
-i2c = busio.I2C(scl=board.GP7, sda=board.GP6, frequency=400 * 1000) # start i2c port @ 400kHz
+# YJ: I have jumpered PIN 6 and 7 to PIN 0 and 1 for I2C. Made a mistake with the electronic design. 
+i2c = busio.I2C(scl=board.GP1, sda=board.GP0, frequency=400 * 1000) # start i2c port @ 400kHz
 
 time.sleep(0.5) # wait for peripherals to wake up
 
@@ -215,3 +216,5 @@ while True:
 	time.sleep(0.5)
 	i2s.stop()
 	time.sleep(0.5)
+
+
