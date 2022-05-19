@@ -27,6 +27,7 @@
 #
 
 # ======= IMPORTS =======
+import sys
 import time
 import array
 import math
@@ -91,6 +92,7 @@ def ack_peripheral(i2c_address):
 	time.sleep(1)
 	return status
 
+
 # write to a register (aic3254 or aic3204 only)
 def set_register(i2c_address, register_address, set_value):
 	# limit the registers addresses from 0 to 127. (see datasheet/register_map p.94)
@@ -102,6 +104,7 @@ def set_register(i2c_address, register_address, set_value):
 	# this function sends a stop bit when it finishes the transaction, might need to check later if it works well with the codec
 	i2c.writeto(i2c_address, bytes([register_address, set_value]))
 	i2c.unlock()
+
 
 # read a specific register and store it into a buffer with given length depending on the data returned by the register
 def read_register(i2c_address, register_address, buffer_length):
@@ -116,6 +119,21 @@ def read_register(i2c_address, register_address, buffer_length):
 	i2c.unlock()
 	
 	return data_buffer
+
+# test a specific register for an expected value. used for debugging purposes
+def test_register(i2c_address, register_address, expected_value):
+	
+	byte_array = read_register(i2c_address, register_address, 1)
+
+	for data in byte_array:
+		byte_output = data
+
+	if (byte_output == expected_value):
+		print("[PASS] R_%s -> EXPECTED: %s. ACTUAL: %s." % (hex(register_address), hex(expected_value), hex(byte_output)))
+	else:
+		print("[ERROR] R_%s -> EXPECTED: %s. ACTUAL: %s." % (hex(register_address), hex(expected_value), hex(byte_output)))
+		sys.exit(1)
+
 
 # initialize and configure the AIC3254 codec on DS-Pi startup
 # This function is hardcoded to configure the codec to 48 kHz given the 2.048 MHz input from
@@ -135,6 +153,7 @@ def init_aic3254(device):
 
 	# configure PLL and clocks
 	set_register(device, 0x00, 0x00) # (P0_R0) go to page 0 on regiter map
+	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
 	set_register(device, 0x1B, 0x2D) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00101101]
 	set_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
 	set_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
@@ -154,16 +173,15 @@ def init_aic3254(device):
 	
 	# DAC routing and power up
 	set_register(device, 0x00, 0x01) # (P1_R0) point to page 1 on register map
-	# DOUBLE CHECK THIS
-	set_register(device, 0x0C, 0x08) # (P1_R12) LDAC AFIR routed to HPL [0b00001000]
-	set_register(device, 0x0D, 0x08) # (P1_R13) RDAC AFIR routed to HPR [0b00001000]
+	set_register(device, 0x0E, 0x08) # (P1_R14) LDAC AFIR routed to LOL [0b00001000]
+	set_register(device, 0x0F, 0x08) # (P1_R15) RDAC AFIR routed to LOR [0b00001000]
 	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
 	set_register(device, 0x40, 0x02) # (P0_R64) DAC left volume = right volumen [0b00000010]
-	set_register(device, 0x41, 0x00) # (P0_R65) set left DAC gain to 0dB VOL
-	set_register(device, 0x3F, 0xD4) # (P0_R63) Power up left and right DAC data paths and set channel
+	set_register(device, 0x41, 0x00) # (P0_R65) set left DAC gain to 0dB DIGITAL VOL
+	set_register(device, 0x3F, 0xD4) # (P0_R63) Power up left and right DAC data paths and set channel [0b11010100]
 	set_register(device, 0x00, 0x01) # (P1_01) point to page 1 on register map
-	set_register(device, 0x10, 0x0A) # (P1_R16) unmute HPL, set 10dB gain [0b00001010]
-	set_register(device, 0x11, 0x0A) # (P1_R17) unmute HPR, set 10db gain [0b00001010]
+	set_register(device, 0x12, 0x0A) # (P1_R18) unmute LOL, set 10dB gain [0b00001010]
+	set_register(device, 0x13, 0x0A) # (P1_R19) unmute LOR, set 10db gain [0b00001010]
 	
 	# ADC routing and power up
 	set_register(device, 0x00, 0x01) # (P1_R0) point to page 1 on register mao
@@ -178,8 +196,77 @@ def init_aic3254(device):
 	set_register(device, 0x52, 0x00) # (P0_R82) unmute left and right ADCs
 	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
 	time.sleep(0.01) # wait 10 ms
+
+
+# look into the registers to test and double check they hold the right values given the configuration.	
+def probe_aic3254(device):
+	set_register(device, 0x00, 0x01) # (P1_R0) jump to page 1 on register map
+	print("===== PAGE 1 =====")
+
+	test_register(device, 0x01, 0x08) # (P1_R1) disable crude AVDD generation from DVDD [0b00001000]
+	test_register(device, 0x02, 0x01) # (P1_R2) enable analog block, AVDD LDO powered up [0b00000001]
+
+	# configure PLL and clocks
+	set_register(device, 0x00, 0x00) # (P0_R0) go to page 0 on regiter map
+	print("===== PAGE 0 =====")
+
+	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
+	test_register(device, 0x1B, 0x2D) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00101101]
+	test_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
+	test_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
+	test_register(device, 0x06, 0x0E) # (P0_R6) set J = 14 [0b00001110]
+	test_register(device, 0x07, 0x00) # (P0_R7) set D = 0 (MSB)
+	test_register(device, 0x08, 0x00) # (P0_R8) set D = 0 (LSB)
+	# for 32 bit clocks per frame in Master mode ONLY
+	test_register(device, 0x1E, 0x08) # (P0_R30) set BCKL N divider to 8. BLCK = DAC_CLK/N = 12.288 MHz/8 = 32*fs = 1.536 MHz
+	test_register(device, 0x05, 0x93) # (P0_R5) Power up PLL, set P = 1 and R = 3 [0b10010011]
+	test_register(device, 0x0D, 0x00) # (P0_R13) set DOSR = 128 (MSB), hex 0x0080, DAC Oversampling
+	test_register(device, 0x0E, 0x80) # (P0_R14) set DOSR = 128 (LSB)
+	test_register(device, 0x14, 0x80) # (P0_R20) set AOSR = 128 decimal or 0x0080 hex, for decimation filters 1 to 6, ADC Oversampling
+	test_register(device, 0x0B, 0x82) # (P0_R11) power up and set NDAC = 2 [0b10000010]
+	test_register(device, 0x0C, 0x87) # (P0_R12) power up and set MDAC = 7 [0b10000111]
+	test_register(device, 0x12, 0x87) # (P0_R18) power up and set NADC = 7
+	test_register(device, 0x13, 0x82) # (P0_R19) power up and set MADC = 2
 	
+	# DAC routing and power up
+	set_register(device, 0x00, 0x01) # (P1_R0) point to page 1 on register map
+	print("===== PAGE 1 =====")
+
+	test_register(device, 0x0E, 0x08) # (P1_R14) LDAC AFIR routed to LOL [0b00001000]
+	test_register(device, 0x0F, 0x08) # (P1_R15) RDAC AFIR routed to LOR [0b00001000]
+
+	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
+	print("===== PAGE 0 =====")
+
+	test_register(device, 0x40, 0x02) # (P0_R64) DAC left volume = right volumen [0b00000010]
+	test_register(device, 0x41, 0x00) # (P0_R65) set left DAC gain to 0dB DIGITAL VOL
+	test_register(device, 0x3F, 0xD4) # (P0_R63) Power up left and right DAC data paths and set channel [0b11010100]
+
+	set_register(device, 0x00, 0x01) # (P1_01) point to page 1 on register map
+	print("===== PAGE 1 =====")
+
+	test_register(device, 0x12, 0x0A) # (P1_R18) unmute LOL, set 10dB gain [0b00001010]
+	test_register(device, 0x13, 0x0A) # (P1_R19) unmute LOR, set 10db gain [0b00001010]
 	
+	# ADC routing and power up
+	set_register(device, 0x00, 0x01) # (P1_R0) point to page 1 on register map
+	print("===== PAGE 1 =====")
+
+	test_register(device, 0x34, 0x50) # (P1_R52) Route IN1L and IN2L to Left MICPGA with 10kohm resistance [0b01010000]
+	test_register(device, 0x37, 0x50) # (P1_R55) Route IN1R and IN2R to RIght MICPGA with 10kohm resistance [0b01010000]
+	test_register(device, 0x36, 0x01) # (P1_R54) CM is routed to Left MICPGA via CM2L with 10kohm resistance
+	test_register(device, 0x39, 0x40) # (P1_R57) CM is routed to Right MICPGA via CM1R with 10kohm resistance [0b01000000]
+	test_register(device, 0x3B, gain) # (P1_R59) Unmute left MICPGA  and set its gain
+	test_register(device, 0x3C, gain) # (P1_R60) Unmute right MICPGA and set its gain
+
+	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
+	print("===== PAGE 0 =====")
+
+	test_register(device, 0x51, 0xC0) # (P0_R81) power up left and right ADCs
+	test_register(device, 0x52, 0x00) # (P0_R82) unmute left and right ADCs
+	test_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
+	time.sleep(0.01) # wait 10 ms
+
 	
 # ======= SETUP =======
 
@@ -189,7 +276,7 @@ i2s = audiobusio.I2SOut(board.GP3, board.GP4, board.GP5) # BCLK, WCLK, DIN respe
 # generate the data for a sine wave @ 440 Hz
 tone_volume = 1
 freq = 440 # tone @ 440 Hz (A1 / La)
-length = 4000 // freq
+length = 8000 // freq
 sine_wave = array.array("h", [0] * length)
 for i in range(length):
 	sine_wave[i] = int((math.sin(math.pi * 2 * i / length)) * tone_volume * (2 ** 15 - 1))
@@ -208,6 +295,7 @@ if (not ack_peripheral(dev_address)):
 
 # config codec
 init_aic3254(dev_address)
+probe_aic3254(dev_address)
 
 # ====== MAIN LOOP ======
 
@@ -216,5 +304,3 @@ while True:
 	time.sleep(0.5)
 	i2s.stop()
 	time.sleep(0.5)
-
-
