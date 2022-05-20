@@ -264,7 +264,7 @@ def probe_aic3254(device):
 
 	test_register(device, 0x51, 0xC0) # (P0_R81) power up left and right ADCs
 	test_register(device, 0x52, 0x00) # (P0_R82) unmute left and right ADCs
-	test_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
+	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
 	time.sleep(0.01) # wait 10 ms
 
 	
