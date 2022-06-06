@@ -37,6 +37,7 @@ import rp2pio # PIO support
 import adafruit_pioasm # assembler
 import audiocore
 import audiobusio # i2s
+import digitalio # led
 
 # ======= PIO Clock =======
 clock = """
@@ -69,7 +70,7 @@ print("MCLK real frequency:", state_machine.frequency)
 # dev_address = 0x53
 
 # datasheet says i2c device ID is 0b0011000 (7-bit) so 0b0011000 << 1 = 0b00110000 = 0x30
-dev_address = 0x18 # 0b00110000
+dev_address = 0x18 # 0b0011000
 
 gain = 0x14 # 10dB gain. see datasheet for this value (p. 141) [0b00010100]
 
@@ -154,7 +155,7 @@ def init_aic3254(device):
 	# configure PLL and clocks
 	set_register(device, 0x00, 0x00) # (P0_R0) go to page 0 on regiter map
 	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
-	set_register(device, 0x1B, 0x2D) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00101101]
+	set_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as inputs to AIC3254 (slave) [0b00100001]
 	set_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
 	set_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
 	set_register(device, 0x06, 0x0E) # (P0_R6) set J = 14 [0b00001110]
@@ -180,6 +181,8 @@ def init_aic3254(device):
 	set_register(device, 0x41, 0x00) # (P0_R65) set left DAC gain to 0dB DIGITAL VOL
 	set_register(device, 0x3F, 0xD4) # (P0_R63) Power up left and right DAC data paths and set channel [0b11010100]
 	set_register(device, 0x00, 0x01) # (P1_01) point to page 1 on register map
+	set_register(device, 0x09, 0x0C) # (P1_R9) power up LOL and LOR [0b00001100]
+	set_register(device, 0x0A, 0x08) # (P1_R10) output common mode for LOL and LOR is 1.65 from LDOIN (= Vcc / 2) [0b00001000]
 	set_register(device, 0x12, 0x0A) # (P1_R18) unmute LOL, set 10dB gain [0b00001010]
 	set_register(device, 0x13, 0x0A) # (P1_R19) unmute LOR, set 10db gain [0b00001010]
 	
@@ -211,7 +214,7 @@ def probe_aic3254(device):
 	print("===== PAGE 0 =====")
 
 	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
-	test_register(device, 0x1B, 0x2D) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00101101]
+	test_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00100001]
 	test_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
 	test_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
 	test_register(device, 0x06, 0x0E) # (P0_R6) set J = 14 [0b00001110]
@@ -245,6 +248,8 @@ def probe_aic3254(device):
 	set_register(device, 0x00, 0x01) # (P1_01) point to page 1 on register map
 	print("===== PAGE 1 =====")
 
+	test_register(device, 0x09, 0x0C) # (P1_R9) power up LOL and LOR [0b00001100]
+	test_register(device, 0x0A, 0x08) # (P1_R10) output common mode for LOL and LOR is 1.65 from LDOIN (= Vcc / 2) [0b00001000]
 	test_register(device, 0x12, 0x0A) # (P1_R18) unmute LOL, set 10dB gain [0b00001010]
 	test_register(device, 0x13, 0x0A) # (P1_R19) unmute LOR, set 10db gain [0b00001010]
 	
@@ -267,20 +272,26 @@ def probe_aic3254(device):
 	set_register(device, 0x00, 0x00) # (P0_R0) point to page 0 on register map
 	time.sleep(0.01) # wait 10 ms
 
-	
+def reset_aic3254(device):
+	# issue a soft reset
+	set_register(device, 0x00, 0x00) # (P0_R0) go to page 0 on register map
+	set_register(device, 0x01, 0x01) # (P0_R1) issue a software reset to the codec
+	time.sleep(0.001) # wait for device to initialize registers
+
+def sine(freq):
+	# generate the data for a sine wave @ freq Hz
+	tone_volume = 1
+	f = freq # tone @ freq Hz (A1 / La)
+	length = 8000 // f
+	sine_wave = array.array("h", [0] * length)
+	for i in range(length):
+		sine_wave[i] = int((math.sin(math.pi * 2 * i / length)) * tone_volume * (2 ** 15 - 1))
+	return audiocore.RawSample(sine_wave)
+
 # ======= SETUP =======
 
 # setup the i2s bus
 i2s = audiobusio.I2SOut(board.GP3, board.GP4, board.GP5) # BCLK, WCLK, DIN respectively
-
-# generate the data for a sine wave @ 440 Hz
-tone_volume = 1
-freq = 440 # tone @ 440 Hz (A1 / La)
-length = 8000 // freq
-sine_wave = array.array("h", [0] * length)
-for i in range(length):
-	sine_wave[i] = int((math.sin(math.pi * 2 * i / length)) * tone_volume * (2 ** 15 - 1))
-sine_wave_sample = audiocore.RawSample(sine_wave)
 
 # setup the i2c bus
 # YJ: I have jumpered PIN 6 and 7 to PIN 0 and 1 for I2C. Made a mistake with the electronic design. 
@@ -294,13 +305,45 @@ if (not ack_peripheral(dev_address)):
 		time.sleep(0.5)
 
 # config codec
+reset_aic3254(dev_address)
 init_aic3254(dev_address)
 probe_aic3254(dev_address)
+
+# setup the led
+led = digitalio.DigitalInOut(board.GP25)
+led.direction = digitalio.Direction.OUTPUT
 
 # ====== MAIN LOOP ======
 
 while True:
-	i2s.play(sine_wave_sample, loop=True)
-	time.sleep(0.5)
-	i2s.stop()
-	time.sleep(0.5)
+	tone = sine(1000)
+	i2s.play(tone, loop=True)
+	led.value = True
+	time.sleep(0.2)
+	
+	led.value = False
+	time.sleep(0.2)
+	
+	tone = sine(1200)
+	i2s.play(tone, loop=True)
+	led.value = True
+	time.sleep(0.2)
+	
+	led.value = False
+	time.sleep(0.2)
+	
+	tone = sine(1400)
+	i2s.play(tone, loop=True)
+	led.value = True
+	time.sleep(0.2)
+	
+	led.value = False
+	time.sleep(0.2)
+	
+	tone = sine(2000)
+	i2s.play(tone, loop=True)
+	led.value = True
+	time.sleep(0.2)
+	
+	led.value = False
+	time.sleep(0.2)
