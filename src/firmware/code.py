@@ -155,13 +155,13 @@ def init_aic3254(device):
 	# configure PLL and clocks
 	set_register(device, 0x00, 0x00) # (P0_R0) go to page 0 on regiter map
 	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
-	set_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as inputs to AIC3254 (slave) [0b00100001]
+	set_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as inputs to AIC3254 (target) [0b00100001]
 	set_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
 	set_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
 	set_register(device, 0x06, 0x0E) # (P0_R6) set J = 14 [0b00001110]
 	set_register(device, 0x07, 0x00) # (P0_R7) set D = 0 (MSB)
 	set_register(device, 0x08, 0x00) # (P0_R8) set D = 0 (LSB)
-	# for 32 bit clocks per frame in Master mode ONLY
+	# for 32 bit clocks per frame in Controller mode ONLY
 	set_register(device, 0x1E, 0x08) # (P0_R30) set BCKL N divider to 8. BLCK = DAC_CLK/N = 12.288 MHz/8 = 32*fs = 1.536 MHz
 	set_register(device, 0x05, 0x93) # (P0_R5) Power up PLL, set P = 1 and R = 3 [0b10010011]
 	set_register(device, 0x0D, 0x00) # (P0_R13) set DOSR = 128 (MSB), hex 0x0080, DAC Oversampling
@@ -214,13 +214,13 @@ def probe_aic3254(device):
 	print("===== PAGE 0 =====")
 
 	# TODO: fiddle with the bit depth, maybe tthe rp2040 is generating a fixed 16 bit word length...
-	test_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (master) [0b00100001]
+	test_register(device, 0x1B, 0x21) # (P0_R27) enable I2S, 24 bit depth, set BCLK and WCLK as outputs to AIC3254 (target) [0b00100001]
 	test_register(device, 0x1C, 0x00) # (P0_R28) set data offset to 0 BCLKs
 	test_register(device, 0x04, 0x03) # (P0_R4) config PLL settings: Low PLL clock range, MCLK -> PLL_CLKIN, PLL_CLK -> CODEC_CLKIN [0b00000011]
 	test_register(device, 0x06, 0x0E) # (P0_R6) set J = 14 [0b00001110]
 	test_register(device, 0x07, 0x00) # (P0_R7) set D = 0 (MSB)
 	test_register(device, 0x08, 0x00) # (P0_R8) set D = 0 (LSB)
-	# for 32 bit clocks per frame in Master mode ONLY
+	# for 32 bit clocks per frame in Controller mode ONLY
 	test_register(device, 0x1E, 0x08) # (P0_R30) set BCKL N divider to 8. BLCK = DAC_CLK/N = 12.288 MHz/8 = 32*fs = 1.536 MHz
 	test_register(device, 0x05, 0x93) # (P0_R5) Power up PLL, set P = 1 and R = 3 [0b10010011]
 	test_register(device, 0x0D, 0x00) # (P0_R13) set DOSR = 128 (MSB), hex 0x0080, DAC Oversampling
